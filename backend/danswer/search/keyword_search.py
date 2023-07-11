@@ -28,8 +28,7 @@ def remove_stop_words(text: str) -> list[str]:
 
 def query_processing(query: str) -> str:
     query = " ".join(remove_stop_words(query))
-    query = " ".join(lemmatize_text(query))
-    return query
+    return " ".join(lemmatize_text(query))
 
 
 @log_function_time()

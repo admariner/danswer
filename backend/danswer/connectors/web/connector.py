@@ -58,7 +58,7 @@ class WebConnector(LoadConnector):
         batch_size: int = INDEX_BATCH_SIZE,
     ) -> None:
         if "://" not in base_url:
-            base_url = "https://" + base_url
+            base_url = f"https://{base_url}"
         self.base_url = base_url
         self.batch_size = batch_size
 
@@ -94,10 +94,7 @@ class WebConnector(LoadConnector):
                     # PDF files are not checked for links
                     response = requests.get(current_url)
                     pdf_reader = PdfReader(io.BytesIO(response.content))
-                    page_text = ""
-                    for pdf_page in pdf_reader.pages:
-                        page_text += pdf_page.extract_text()
-
+                    page_text = "".join(pdf_page.extract_text() for pdf_page in pdf_reader.pages)
                     doc_batch.append(
                         Document(
                             id=current_url,
@@ -116,7 +113,7 @@ class WebConnector(LoadConnector):
                     logger.info(f"Redirected to {final_page}")
                     current_url = final_page
                     if current_url in visited_links:
-                        logger.info(f"Redirected page already indexed")
+                        logger.info("Redirected page already indexed")
                         continue
                     visited_links.add(current_url)
 

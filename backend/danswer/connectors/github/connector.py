@@ -22,10 +22,10 @@ def get_pr_batches(
 ) -> Generator[list[PullRequest], None, None]:
     it = iter(pull_requests)
     while True:
-        batch = list(itertools.islice(it, batch_size))
-        if not batch:
+        if batch := list(itertools.islice(it, batch_size)):
+            yield batch
+        else:
             break
-        yield batch
 
 
 class GithubConnector(LoadConnector):

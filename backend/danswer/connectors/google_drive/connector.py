@@ -45,14 +45,10 @@ def get_file_batches(
     while next_page_token is not None:
         query = ""
         if time_range_start is not None:
-            time_start = (
-                datetime.datetime.utcfromtimestamp(time_range_start).isoformat() + "Z"
-            )
+            time_start = f"{datetime.datetime.utcfromtimestamp(time_range_start).isoformat()}Z"
             query += f"modifiedTime >= '{time_start}' "
         if time_range_end is not None:
-            time_stop = (
-                datetime.datetime.utcfromtimestamp(time_range_end).isoformat() + "Z"
-            )
+            time_stop = f"{datetime.datetime.utcfromtimestamp(time_range_end).isoformat()}Z"
             query += f"and modifiedTime <= '{time_stop}'"
 
         results = (
@@ -68,10 +64,11 @@ def get_file_batches(
         )
         next_page_token = results.get("nextPageToken")
         files = results["files"]
-        valid_files: list[dict[str, str]] = []
-        for file in files:
-            if file["mimeType"] in SUPPORTED_DRIVE_DOC_TYPES:
-                valid_files.append(file)
+        valid_files: list[dict[str, str]] = [
+            file
+            for file in files
+            if file["mimeType"] in SUPPORTED_DRIVE_DOC_TYPES
+        ]
         logger.info(
             f"Parseable Documents in batch: {[file['name'] for file in valid_files]}"
         )

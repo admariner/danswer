@@ -27,19 +27,16 @@ class BookStackApiClient:
             json = response.json()
         except:
             json = {}
-            pass
-
         if response.status_code >= 300:
             error = response.reason
-            response_error = json.get("error", {}).get("message", "")
-            if response_error:
+            if response_error := json.get("error", {}).get("message", ""):
                 error = response_error
             raise BookStackClientRequestFailedError(response.status_code, error)
 
         return json
 
     def _build_headers(self):
-        auth = 'Token ' + self.token_id + ':' + self.token_secret
+        auth = f'Token {self.token_id}:{self.token_secret}'
         return {
             'Authorization': auth,
             'Accept': 'application/json',

@@ -87,14 +87,14 @@ def load_qdrant(filename: str) -> None:
 
     with open(filename, "rb") as f:
         files = {"snapshot": (os.path.basename(filename), f)}
-        response = requests.post(snapshot_url + "upload", files=files)
+        response = requests.post(f"{snapshot_url}upload", files=files)
         if response.status_code != 200:
             raise RuntimeError("Qdrant Snapshot Upload Failed")
 
     data = {"location": snapshot_url + os.path.basename(filename)}
     headers = {"Content-Type": "application/json"}
     response = requests.put(
-        snapshot_url + "recover", data=json.dumps(data), headers=headers
+        f"{snapshot_url}recover", data=json.dumps(data), headers=headers
     )
     if response.status_code != 200:
         raise RuntimeError("Loading Qdrant Snapshot Failed")

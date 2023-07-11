@@ -60,12 +60,12 @@ def get_qdrant_document_whitelists(
     )
     if len(results) == 0:
         return False, [], []
-    payload = results[0].payload
-    if not payload:
+    if payload := results[0].payload:
+        return True, payload[ALLOWED_USERS], payload[ALLOWED_GROUPS]
+    else:
         raise RuntimeError(
             "Qdrant Index is corrupted, Document found with no access lists."
         )
-    return True, payload[ALLOWED_USERS], payload[ALLOWED_GROUPS]
 
 
 def delete_qdrant_doc_chunks(

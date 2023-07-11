@@ -63,9 +63,7 @@ class BookstackConnector(LoadConnector, PollConnector):
             params["filter[updated_at:lte]"] = datetime.utcfromtimestamp(end).strftime('%Y-%m-%d %H:%M:%S')
 
         batch = self.bookstack_client.get(endpoint, params=params).get("data", [])
-        for item in batch:
-            doc_batch.append(transformer(item))
-
+        doc_batch.extend(transformer(item) for item in batch)
         return doc_batch, len(batch)
 
     def _book_to_document(self, book: dict):
@@ -112,21 +110,18 @@ class BookstackConnector(LoadConnector, PollConnector):
 
     def _page_to_document(self, page: dict):
         page_id = str(page.get("id"))
-        page_data = self.bookstack_client.get("/pages/" + page_id, {})
+        page_data = self.bookstack_client.get(f"/pages/{page_id}", {})
         url = self.bookstack_client.build_app_url("/books/" + page.get("book_slug") + "/page/" + page_data.get("slug"))
         page_html = "<h1>" + html.escape(page_data.get("name")) + "</h1>" + page_data.get("html")
         soup = BeautifulSoup(page_html, "html.parser")
         text = soup.get_text(HTML_SEPARATOR)
         time.sleep(0.1)
         return Document(
-            id="page:" + page_id,
+            id=f"page:{page_id}",
             sections=[Section(link=url, text=text)],
             source=DocumentSource.BOOKSTACK,
             semantic_identifier="Page: " + page_data.get("name"),
-            metadata={
-                "type": "page",
-                "updated_at": page_data.get("updated_at")
-            },
+            metadata={"type": "page", "updated_at": page_data.get("updated_at")},
         )
 
     def load_from_state(self) -> GenerateDocumentsOutput:

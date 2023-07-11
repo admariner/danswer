@@ -45,8 +45,7 @@ def connector_by_name_exists(connector_name: str, db_session: Session) -> bool:
 def fetch_connector_by_id(connector_id: int, db_session: Session) -> Connector | None:
     stmt = select(Connector).where(Connector.id == connector_id)
     result = db_session.execute(stmt)
-    connector = result.scalar_one_or_none()
-    return connector
+    return result.scalar_one_or_none()
 
 
 def create_connector(

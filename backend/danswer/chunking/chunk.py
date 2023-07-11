@@ -87,19 +87,17 @@ def chunk_large_section(
             start_pos -= 1
         chunk_strs.append(section_text[start_pos + 2 :])
 
-    chunks = []
-    for chunk_ind, chunk_str in enumerate(chunk_strs):
-        chunks.append(
-            IndexChunk(
-                source_document=document,
-                chunk_id=start_chunk_id + chunk_ind,
-                blurb=blurb,
-                content=chunk_str,
-                source_links={0: section.link},
-                section_continuation=(chunk_ind != 0),
-            )
+    return [
+        IndexChunk(
+            source_document=document,
+            chunk_id=start_chunk_id + chunk_ind,
+            blurb=blurb,
+            content=chunk_str,
+            source_links={0: section.link},
+            section_continuation=(chunk_ind != 0),
         )
-    return chunks
+        for chunk_ind, chunk_str in enumerate(chunk_strs)
+    ]
 
 
 def chunk_document(

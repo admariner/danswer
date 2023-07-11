@@ -81,10 +81,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     ) -> models.UP:
         if hasattr(user_create, "role"):
             user_count = await get_user_count()
-            if user_count == 0:
-                user_create.role = UserRole.ADMIN
-            else:
-                user_create.role = UserRole.BASIC
+            user_create.role = UserRole.ADMIN if user_count == 0 else UserRole.BASIC
         return await super().create(user_create, safe=safe, request=request)  # type: ignore
 
     async def on_after_register(
@@ -176,9 +173,7 @@ current_active_user = fastapi_users.current_user(
 
 
 async def current_user(user: User = Depends(current_active_user)) -> User | None:
-    if DISABLE_AUTH:
-        return None
-    return user
+    return None if DISABLE_AUTH else user
 
 
 async def current_admin_user(user: User = Depends(current_user)) -> User | None:

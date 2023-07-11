@@ -25,10 +25,7 @@ SAMPLE_JSON_RESPONSE = {
 
 
 def json_processor(question: str, documents: list[str]) -> str:
-    prompt = (
-        BASE_PROMPT + f"Sample response:\n{json.dumps(SAMPLE_JSON_RESPONSE)}\n\n"
-        f'Each context document below is prefixed with "{DOC_SEP_PAT}".\n\n'
-    )
+    prompt = f'{BASE_PROMPT}Sample response:\n{json.dumps(SAMPLE_JSON_RESPONSE)}\n\nEach context document below is prefixed with "{DOC_SEP_PAT}".\n\n'
 
     for document in documents:
         prompt += f"\n{DOC_SEP_PAT}\n{document}"
@@ -133,10 +130,12 @@ def json_chat_processor(question: str, documents: list[str]) -> list[dict[str, s
                 {"role": "assistant", "content": "Acknowledged"},
             ]
         )
-    messages.append({"role": "system", "content": task_msg})
-
-    messages.append({"role": "user", "content": f"{QUESTION_PAT}\n{question}\n"})
-
+    messages.extend(
+        (
+            {"role": "system", "content": task_msg},
+            {"role": "user", "content": f"{QUESTION_PAT}\n{question}\n"},
+        )
+    )
     return messages
 
 

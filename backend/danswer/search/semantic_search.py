@@ -24,7 +24,7 @@ logger = setup_logger()
 
 
 def chunks_to_search_docs(chunks: list[InferenceChunk] | None) -> list[SearchDoc]:
-    search_docs = (
+    return (
         [
             SearchDoc(
                 document_id=chunk.document_id,
@@ -38,7 +38,6 @@ def chunks_to_search_docs(chunks: list[InferenceChunk] | None) -> list[SearchDoc
         if chunks
         else []
     )
-    return search_docs
 
 
 @log_function_time()
@@ -47,7 +46,10 @@ def semantic_reranking(
     chunks: list[InferenceChunk],
 ) -> list[InferenceChunk]:
     cross_encoders = get_default_reranking_model_ensemble()
-    sim_scores = sum([encoder.predict([(query, chunk.content) for chunk in chunks]) for encoder in cross_encoders])  # type: ignore
+    sim_scores = sum(
+        encoder.predict([(query, chunk.content) for chunk in chunks])
+        for encoder in cross_encoders
+    )
     scored_results = list(zip(sim_scores, chunks))
     scored_results.sort(key=lambda x: x[0], reverse=True)
     ranked_sim_scores, ranked_chunks = zip(*scored_results)
@@ -103,15 +105,13 @@ def split_chunk_text_into_mini_chunks(
             end_positions = [
                 (chunk_text[start + mini_chunk_size :]).find(sep) for sep in separators
             ]
-            # Filter out the not found cases (-1)
-            end_positions = [pos for pos in end_positions if pos != -1]
-            if not end_positions:
-                # If no more separators, the rest of the string becomes a chunk
-                end = len(chunk_text)
-            else:
+            if end_positions := [pos for pos in end_positions if pos != -1]:
                 # Add min_chunk_length and start to the end position
                 end = min(end_positions) + start + mini_chunk_size
 
+            else:
+                # If no more separators, the rest of the string becomes a chunk
+                end = len(chunk_text)
         chunks.append(chunk_text[start:end])
         start = end + 1  # Move to the next character after the separator
 

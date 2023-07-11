@@ -22,19 +22,18 @@ PROJECT_URL_PAT = "projects"
 
 def extract_jira_project(url: str) -> tuple[str, str]:
     parsed_url = urlparse(url)
-    jira_base = parsed_url.scheme + "://" + parsed_url.netloc
+    jira_base = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
     # Split the path by '/' and find the position of 'projects' to get the project name
     split_path = parsed_url.path.split("/")
-    if PROJECT_URL_PAT in split_path:
-        project_pos = split_path.index(PROJECT_URL_PAT)
-        if len(split_path) > project_pos + 1:
-            jira_project = split_path[project_pos + 1]
-        else:
-            raise ValueError("No project name found in the URL")
-    else:
+    if PROJECT_URL_PAT not in split_path:
         raise ValueError("'projects' not found in the URL")
 
+    project_pos = split_path.index(PROJECT_URL_PAT)
+    if len(split_path) > project_pos + 1:
+        jira_project = split_path[project_pos + 1]
+    else:
+        raise ValueError("No project name found in the URL")
     return jira_base, jira_project
 
 

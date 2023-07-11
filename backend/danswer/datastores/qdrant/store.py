@@ -158,7 +158,4 @@ class QdrantIndex(VectorIndex):
             logger.error(f"Found multiple matches for {logger}: {matches}")
 
         match = matches[0]
-        if not match.payload:
-            return None
-
-        return InferenceChunk.from_dict(match.payload)
+        return None if not match.payload else InferenceChunk.from_dict(match.payload)

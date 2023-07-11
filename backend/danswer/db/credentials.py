@@ -15,7 +15,7 @@ logger = setup_logger()
 
 
 def mask_string(sensitive_str: str) -> str:
-    return "****...**" + sensitive_str[-4:]
+    return f"****...**{sensitive_str[-4:]}"
 
 
 def mask_credential_dict(credential_dict: dict[str, Any]) -> dict[str, str]:
@@ -52,8 +52,7 @@ def fetch_credential_by_id(
             or_(Credential.user_id == user.id, Credential.user_id.is_(None))
         )
     result = db_session.execute(stmt)
-    credential = result.scalar_one_or_none()
-    return credential
+    return result.scalar_one_or_none()
 
 
 def create_credential(
