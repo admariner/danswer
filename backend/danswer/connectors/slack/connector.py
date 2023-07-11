@@ -150,8 +150,7 @@ def get_all_docs(
         for message_batch in channel_message_batches:
             for message in message_batch:
                 filtered_thread: ThreadType | None = None
-                thread_ts = message.get("thread_ts")
-                if thread_ts:
+                if thread_ts := message.get("thread_ts"):
                     thread = get_thread(
                         client=client, channel_id=channel["id"], thread_id=thread_ts
                     )
@@ -254,15 +253,14 @@ class SlackLoadConnector(LoadConnector):
                 with open(path) as f:
                     events = cast(list[dict[str, Any]], json.load(f))
                 for slack_event in events:
-                    doc = self._process_batch_event(
+                    if doc := self._process_batch_event(
                         slack_event=slack_event,
                         channel=channel_info,
                         matching_doc=document_batch.get(
                             slack_event.get("thread_ts", "")
                         ),
                         workspace=self.workspace,
-                    )
-                    if doc:
+                    ):
                         document_batch[doc.id] = doc
                         if len(document_batch) >= self.batch_size:
                             yield list(document_batch.values())

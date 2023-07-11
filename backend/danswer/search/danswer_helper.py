@@ -31,17 +31,14 @@ def query_intent(query: str) -> tuple[SearchType, QueryFlow]:
     keyword, semantic, qa = class_percentages.tolist()[0]
 
     # Heavily bias towards QA, from user perspective, answering a statement is not as bad as not answering a question
-    if qa > 20:
-        # If one class is very certain, choose it still
-        if keyword > 70:
-            return SearchType.KEYWORD, QueryFlow.SEARCH
-        if semantic > 70:
-            return SearchType.SEMANTIC, QueryFlow.SEARCH
-        # If it's a QA question, it must be a "Semantic" style statement/question
-        return SearchType.SEMANTIC, QueryFlow.QUESTION_ANSWER
-    # If definitely not a QA question, choose between keyword or semantic search
-    elif keyword > semantic:
+    if qa > 20 and keyword > 70 or qa <= 20 and keyword > semantic:
         return SearchType.KEYWORD, QueryFlow.SEARCH
+    elif qa > 20:
+        return (
+            (SearchType.SEMANTIC, QueryFlow.SEARCH)
+            if semantic > 70
+            else (SearchType.SEMANTIC, QueryFlow.QUESTION_ANSWER)
+        )
     else:
         return SearchType.SEMANTIC, QueryFlow.SEARCH
 

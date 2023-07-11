@@ -137,8 +137,7 @@ def iterate_post_batches(
         pagination_start = results["data"]["search"]["pageInfo"]["endCursor"]
         hits = results["data"]["search"]["edges"]
 
-        posts = [hit["node"] for hit in hits]
-        if posts:
+        if posts := [hit["node"] for hit in hits]:
             yield posts
 
         exists_more_pages = results["data"]["search"]["pageInfo"]["hasNextPage"]
@@ -154,7 +153,7 @@ def get_slab_url_from_title_id(base_url: str, title: str, page_id: str) -> str:
         .replace(" ", "-")
         .lower()
     )
-    url_id = title + "-" + page_id
+    url_id = f"{title}-{page_id}"
     return urljoin(urljoin(base_url, "posts/"), url_id)
 
 

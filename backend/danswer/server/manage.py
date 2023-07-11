@@ -263,14 +263,13 @@ def connector_run_once(
 
     if not specified_credential_ids:
         credential_ids = possible_credential_ids
+    elif set(specified_credential_ids).issubset(set(possible_credential_ids)):
+        credential_ids = specified_credential_ids
     else:
-        if set(specified_credential_ids).issubset(set(possible_credential_ids)):
-            credential_ids = specified_credential_ids
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Not all specified credentials are associated with connector",
-            )
+        raise HTTPException(
+            status_code=400,
+            detail="Not all specified credentials are associated with connector",
+        )
 
     if not credential_ids:
         raise HTTPException(
@@ -343,10 +342,10 @@ def store_openai_api_key(
     _: User = Depends(current_admin_user),
 ) -> None:
     try:
-        is_valid = check_openai_api_key_is_valid(request.api_key)
-        if not is_valid:
+        if is_valid := check_openai_api_key_is_valid(request.api_key):
+            get_dynamic_config_store().store(OPENAI_API_KEY_STORAGE_KEY, request.api_key)
+        else:
             raise HTTPException(400, "Invalid API key provided")
-        get_dynamic_config_store().store(OPENAI_API_KEY_STORAGE_KEY, request.api_key)
     except RuntimeError as e:
         raise HTTPException(400, str(e))
 

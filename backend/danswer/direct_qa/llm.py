@@ -87,9 +87,7 @@ def extract_answer_quotes_freeform(
         return None, None
 
     answer = str(sections_clean[0])
-    if len(sections) == 1:
-        return answer, None
-    return answer, sections_clean[1:]
+    return (answer, None) if len(sections) == 1 else (answer, sections_clean[1:])
 
 
 def extract_answer_quotes_json(
@@ -135,18 +133,16 @@ def match_quotes_to_docs(
 
             # Finding the offset of the quote in the plain text
             if fuzzy_search:
-                re_search_str = (
-                    r"(" + re.escape(quote_clean) + r"){e<=" + str(max_edits) + r"}"
-                )
-                found = regex.search(re_search_str, chunk_clean)
-                if not found:
+                re_search_str = f"({re.escape(quote_clean)}" + r"){e<=" + str(max_edits) + r"}"
+                if found := regex.search(re_search_str, chunk_clean):
+                    offset = found.span()[0]
+                else:
                     continue
-                offset = found.span()[0]
-            else:
-                if quote_clean not in chunk_clean:
-                    continue
+            elif quote_clean in chunk_clean:
                 offset = chunk_clean.index(quote_clean)
 
+            else:
+                continue
             # Extracting the link from the offset
             curr_link = None
             for link_offset, link in chunk.source_links.items():
@@ -191,9 +187,7 @@ def stream_answer_end(answer_so_far: str, next_token: str) -> bool:
     # If the previous character is an escape token, don't consider the first character of next_token
     if answer_so_far and answer_so_far[-1] == "\\":
         next_token = next_token[1:]
-    if '"' in next_token:
-        return True
-    return False
+    return '"' in next_token
 
 
 F = TypeVar("F", bound=Callable)

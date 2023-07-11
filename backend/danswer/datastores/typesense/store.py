@@ -240,6 +240,4 @@ class TypesenseIndex(KeywordIndex):
         )
 
         hits = search_results["hits"]
-        inference_chunks = [InferenceChunk.from_dict(hit["document"]) for hit in hits]
-
-        return inference_chunks
+        return [InferenceChunk.from_dict(hit["document"]) for hit in hits]
