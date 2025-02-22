@@ -9,13 +9,14 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
-  type: ClusterIP
+  clusterIP: None
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: relational-db-deployment
+  name: relational-db-statefulset
 spec:
+  serviceName: relational-db-service
   replicas: 1
   selector:
     matchLabels:
@@ -26,25 +27,32 @@ spec:
         app: relational-db
     spec:
       containers:
-      - name: relational-db
-        image: postgres:15.2-alpine
-        env:
-        - name: POSTGRES_USER
-          valueFrom:
-            secretKeyRef:
-              name: danswer-secrets
-              key: postgres_user
-        - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: danswer-secrets
-              key: postgres_password
-        ports:
-        - containerPort: 5432
-        volumeMounts:
-        - mountPath: /var/lib/postgresql/data
-          name: db-volume
-      volumes:
-      - name: db-volume
-        persistentVolumeClaim:
-          claimName: db-volume-claim
+        - name: relational-db
+          image: postgres:15.2-alpine
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: onyx-secrets
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: onyx-secrets
+                  key: postgres_password
+          args: ["-c", "max_connections=250"]
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: db-storage
+              subPath: postgres
+  volumeClaimTemplates:
+    - metadata:
+        name: db-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            # Adjust the storage request size as needed.
+            storage: 10Gi
