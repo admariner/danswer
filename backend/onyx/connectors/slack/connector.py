@@ -1,5 +1,6 @@
 import contextvars
 import copy
+import itertools
 import re
 from collections.abc import Callable
 from collections.abc import Generator
@@ -292,7 +293,9 @@ def filter_channels(
         if channel not in all_channel_names:
             raise ValueError(
                 f"Channel '{channel}' not found in workspace. "
-                f"Available channels: {all_channel_names}"
+                f"Available channels (Showing {len(all_channel_names)} of "
+                f"{min(len(all_channel_names), SlackConnector.MAX_CHANNELS_TO_LOG)}): "
+                f"{list(itertools.islice(all_channel_names, SlackConnector.MAX_CHANNELS_TO_LOG))}"
             )
 
     return [
@@ -330,11 +333,19 @@ def _get_messages(
 
     # have to be in the channel in order to read messages
     if not channel["is_member"]:
-        make_slack_api_call_w_retries(
-            client.conversations_join,
-            channel=channel["id"],
-            is_private=channel["is_private"],
-        )
+        try:
+            make_slack_api_call_w_retries(
+                client.conversations_join,
+                channel=channel["id"],
+                is_private=channel["is_private"],
+            )
+        except SlackApiError as e:
+            if e.response["error"] == "is_archived":
+                logger.warning(f"Channel {channel['name']} is archived. Skipping.")
+                return [], False
+
+            logger.exception(f"Error joining channel {channel['name']}")
+            raise
         logger.info(f"Successfully joined '{channel['name']}'")
 
     response = make_slack_api_call_w_retries(
@@ -505,6 +516,8 @@ class SlackConnector(
 
     MAX_RETRIES = 7  # arbitrarily selected
 
+    MAX_CHANNELS_TO_LOG = 50
+
     def __init__(
         self,
         channels: list[str] | None = None,
@@ -527,6 +540,16 @@ class SlackConnector(
         self.credential_prefix: str | None = None
         self.delay_lock: str | None = None  # the redis key for the shared lock
         self.delay_key: str | None = None  # the redis key for the shared delay
+
+    @property
+    def channels(self) -> list[str] | None:
+        return self._channels
+
+    @channels.setter
+    def channels(self, channels: list[str] | None) -> None:
+        self._channels = (
+            [channel.removeprefix("#") for channel in channels] if channels else None
+        )
 
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         raise NotImplementedError("Use set_credentials_provider with this connector.")
@@ -837,12 +860,22 @@ class SlackConnector(
 if __name__ == "__main__":
     import os
     import time
+    from onyx.connectors.credentials_provider import OnyxStaticCredentialsProvider
+    from shared_configs.contextvars import get_current_tenant_id
 
     slack_channel = os.environ.get("SLACK_CHANNEL")
     connector = SlackConnector(
         channels=[slack_channel] if slack_channel else None,
     )
-    connector.load_credentials({"slack_bot_token": os.environ["SLACK_BOT_TOKEN"]})
+
+    provider = OnyxStaticCredentialsProvider(
+        tenant_id=get_current_tenant_id(),
+        connector_name="slack",
+        credential_json={
+            "slack_bot_token": os.environ["SLACK_BOT_TOKEN"],
+        },
+    )
+    connector.set_credentials_provider(provider)
 
     current = time.time()
     one_day_ago = current - 24 * 60 * 60  # 1 day

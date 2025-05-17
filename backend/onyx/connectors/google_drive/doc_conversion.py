@@ -24,8 +24,10 @@ from onyx.connectors.models import ImageSection
 from onyx.connectors.models import SlimDocument
 from onyx.connectors.models import TextSection
 from onyx.db.engine import get_session_with_current_tenant
+from onyx.file_processing.extract_file_text import ALL_ACCEPTED_FILE_EXTENSIONS
 from onyx.file_processing.extract_file_text import docx_to_text_and_images
 from onyx.file_processing.extract_file_text import extract_file_text
+from onyx.file_processing.extract_file_text import get_file_ext
 from onyx.file_processing.extract_file_text import pptx_to_text
 from onyx.file_processing.extract_file_text import read_pdf_file
 from onyx.file_processing.extract_file_text import xlsx_to_text
@@ -221,6 +223,12 @@ def _download_and_extract_sections_basic(
             "application/zip",
         ]:
             return []
+
+        # don't download the file at all if it's an unhandled extension
+        file_ext = get_file_ext(file.get("name", ""))
+        if file_ext not in ALL_ACCEPTED_FILE_EXTENSIONS:
+            logger.warning(f"Skipping file {file.get('name')} due to extension.")
+            return []
         # For unsupported file types, try to extract text
         try:
             text = extract_file_text(io.BytesIO(response_call()), file_name)
@@ -327,12 +335,16 @@ def convert_drive_item_to_document(
         doc_or_failure = _convert_drive_item_to_document(
             creds, allow_images, size_threshold, retriever_email, file
         )
+
+        # There are a variety of permissions-based errors that occasionally occur
+        # when retrieving files. Often when these occur, there is another user
+        # that can successfully retrieve the file, so we try the next user.
         if (
             doc_or_failure is None
             or isinstance(doc_or_failure, Document)
             or not (
                 isinstance(doc_or_failure.exception, HttpError)
-                and doc_or_failure.exception.status_code == 403
+                and doc_or_failure.exception.status_code in [401, 403, 404]
             )
         ):
             return doc_or_failure
