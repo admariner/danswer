@@ -19,7 +19,11 @@ from onyx.connectors.confluence.utils import build_confluence_document_id
 from onyx.connectors.confluence.utils import convert_attachment_to_content
 from onyx.connectors.confluence.utils import datetime_from_string
 from onyx.connectors.confluence.utils import process_attachment
+from onyx.connectors.confluence.utils import update_param_in_path
 from onyx.connectors.confluence.utils import validate_attachment_filetype
+from onyx.connectors.cross_connector_utils.miscellaneous_utils import (
+    is_atlassian_date_error,
+)
 from onyx.connectors.exceptions import ConnectorValidationError
 from onyx.connectors.exceptions import CredentialExpiredError
 from onyx.connectors.exceptions import InsufficientPermissionsError
@@ -70,15 +74,14 @@ _RESTRICTIONS_EXPANSION_FIELDS = [
 _SLIM_DOC_BATCH_SIZE = 5000
 
 ONE_HOUR = 3600
+ONE_DAY = ONE_HOUR * 24
 
-
-def _should_propagate_error(e: Exception) -> bool:
-    return "field 'updated' is invalid" in str(e)
+MAX_CACHED_IDS = 100
 
 
 class ConfluenceCheckpoint(ConnectorCheckpoint):
-    last_updated: SecondsSinceUnixEpoch
-    last_seen_doc_ids: list[str]
+
+    next_page_url: str | None
 
 
 class ConfluenceConnector(
@@ -209,11 +212,17 @@ class ConfluenceConnector(
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         raise NotImplementedError("Use set_credentials_provider with this connector.")
 
-    def _construct_page_query(
+    def _construct_page_cql_query(
         self,
         start: SecondsSinceUnixEpoch | None = None,
         end: SecondsSinceUnixEpoch | None = None,
     ) -> str:
+        """
+        Constructs a CQL query for use in the confluence API. See
+        https://developer.atlassian.com/server/confluence/advanced-searching-using-cql/
+        for more information. This is JUST the CQL, not the full URL used to hit the API.
+        Use _build_page_retrieval_url to get the full URL.
+        """
         page_query = self.base_cql_page_query + self.cql_label_filter
         # Add time filters
         if start:
@@ -357,7 +366,7 @@ class ConfluenceConnector(
             )
         except Exception as e:
             logger.error(f"Error converting page {page.get('id', 'unknown')}: {e}")
-            if _should_propagate_error(e):
+            if is_atlassian_date_error(e):  # propagate error to be caught and retried
                 raise
             return ConnectorFailure(
                 failed_document=DocumentFailure(
@@ -436,7 +445,9 @@ class ConfluenceConnector(
                     f"Failed to extract/summarize attachment {attachment['title']}",
                     exc_info=e,
                 )
-                if _should_propagate_error(e):
+                if is_atlassian_date_error(
+                    e
+                ):  # propagate error to be caught and retried
                     raise
                 return ConnectorFailure(
                     failed_document=DocumentFailure(
@@ -461,58 +472,59 @@ class ConfluenceConnector(
              - Attempt to convert it with convert_attachment_to_content(...)
              - If successful, create a new Section with the extracted text or summary.
         """
-
-        # number of documents/errors yielded
-        yield_count = 0
-
         checkpoint = copy.deepcopy(checkpoint)
-        prev_doc_ids = checkpoint.last_seen_doc_ids
-        checkpoint.last_seen_doc_ids = []
-        # use "start" when last_updated is 0
-        page_query = self._construct_page_query(checkpoint.last_updated or start, end)
-        logger.debug(f"page_query: {page_query}")
 
-        # most requests will include a few pages to skip, so we limit each page to
-        # 2 * batch_size to only need a single request for most checkpoint runs
-        for page in self.confluence_client.paginated_cql_retrieval(
-            cql=page_query,
-            expand=",".join(_PAGE_EXPANSION_FIELDS),
-            limit=2 * self.batch_size,
+        # use "start" when last_updated is 0 or for confluence server
+        start_ts = start
+        page_query_url = checkpoint.next_page_url or self._build_page_retrieval_url(
+            start_ts, end, self.batch_size
+        )
+        logger.debug(f"page_query_url: {page_query_url}")
+
+        # store the next page start for confluence server, cursor for confluence cloud
+        def store_next_page_url(next_page_url: str) -> None:
+            checkpoint.next_page_url = next_page_url
+
+        for page in self.confluence_client.paginated_page_retrieval(
+            cql_url=page_query_url,
+            limit=self.batch_size,
+            next_page_callback=store_next_page_url,
         ):
-            # create checkpoint after enough documents have been processed
-            if yield_count >= self.batch_size:
-                return checkpoint
-
-            if page["id"] in prev_doc_ids:
-                # There are a few seconds of fuzziness in the request,
-                # so we skip if we saw this page on the last run
-                continue
             # Build doc from page
             doc_or_failure = self._convert_page_to_document(page)
-            yield_count += 1
 
             if isinstance(doc_or_failure, ConnectorFailure):
                 yield doc_or_failure
                 continue
-
-            checkpoint.last_updated = datetime_from_string(
-                page["version"]["when"]
-            ).timestamp()
-
             # Now get attachments for that page:
             doc_or_failure = self._fetch_page_attachments(page, doc_or_failure)
 
-            if isinstance(doc_or_failure, ConnectorFailure):
-                yield doc_or_failure
-                continue
-
-            # yield completed document
-
-            checkpoint.last_seen_doc_ids.append(page["id"])
+            # yield completed document (or failure)
             yield doc_or_failure
+
+            # Create checkpoint once a full page of results is returned
+            if checkpoint.next_page_url and checkpoint.next_page_url != page_query_url:
+                return checkpoint
 
         checkpoint.has_more = False
         return checkpoint
+
+    def _build_page_retrieval_url(
+        self,
+        start: SecondsSinceUnixEpoch | None,
+        end: SecondsSinceUnixEpoch | None,
+        limit: int,
+    ) -> str:
+        """
+        Builds the full URL used to retrieve pages from the confluence API.
+        This can be used as input to the confluence client's _paginate_url
+        or paginated_page_retrieval methods.
+        """
+        page_query = self._construct_page_cql_query(start, end)
+        cql_url = self.confluence_client.build_cql_url(
+            page_query, expand=",".join(_PAGE_EXPANSION_FIELDS)
+        )
+        return update_param_in_path(cql_url, "limit", str(limit))
 
     @override
     def load_from_checkpoint(
@@ -521,10 +533,11 @@ class ConfluenceConnector(
         end: SecondsSinceUnixEpoch,
         checkpoint: ConfluenceCheckpoint,
     ) -> CheckpointOutput[ConfluenceCheckpoint]:
+        end += ONE_DAY  # handle time zone weirdness
         try:
             return self._fetch_document_batches(checkpoint, start, end)
         except Exception as e:
-            if _should_propagate_error(e) and start is not None:
+            if is_atlassian_date_error(e) and start is not None:
                 logger.warning(
                     "Confluence says we provided an invalid 'updated' field. This may indicate"
                     "a real issue, but can also appear during edge cases like daylight"
@@ -535,7 +548,7 @@ class ConfluenceConnector(
 
     @override
     def build_dummy_checkpoint(self) -> ConfluenceCheckpoint:
-        return ConfluenceCheckpoint(last_updated=0, has_more=True, last_seen_doc_ids=[])
+        return ConfluenceCheckpoint(has_more=True, next_page_url=None)
 
     @override
     def validate_checkpoint_json(self, checkpoint_json: str) -> ConfluenceCheckpoint:

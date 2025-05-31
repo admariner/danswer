@@ -120,8 +120,10 @@ SMTP_SERVER = os.environ.get("SMTP_SERVER") or "smtp.gmail.com"
 SMTP_PORT = int(os.environ.get("SMTP_PORT") or "587")
 SMTP_USER = os.environ.get("SMTP_USER", "your-email@gmail.com")
 SMTP_PASS = os.environ.get("SMTP_PASS", "your-gmail-password")
-EMAIL_CONFIGURED = all([SMTP_SERVER, SMTP_USER, SMTP_PASS])
 EMAIL_FROM = os.environ.get("EMAIL_FROM") or SMTP_USER
+
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY") or ""
+EMAIL_CONFIGURED = all([SMTP_SERVER, SMTP_USER, SMTP_PASS]) or SENDGRID_API_KEY
 
 # If set, Onyx will listen to the `expires_at` returned by the identity
 # provider (e.g. Okta, Google, etc.) and force the user to re-authenticate
@@ -670,6 +672,21 @@ EXPECTED_API_KEY = os.environ.get(
 # API configuration
 CONTROL_PLANE_API_BASE_URL = os.environ.get(
     "CONTROL_PLANE_API_BASE_URL", "http://localhost:8082"
+)
+
+OAUTH_SLACK_CLIENT_ID = os.environ.get("OAUTH_SLACK_CLIENT_ID", "")
+OAUTH_SLACK_CLIENT_SECRET = os.environ.get("OAUTH_SLACK_CLIENT_SECRET", "")
+OAUTH_CONFLUENCE_CLOUD_CLIENT_ID = os.environ.get(
+    "OAUTH_CONFLUENCE_CLOUD_CLIENT_ID", ""
+)
+OAUTH_CONFLUENCE_CLOUD_CLIENT_SECRET = os.environ.get(
+    "OAUTH_CONFLUENCE_CLOUD_CLIENT_SECRET", ""
+)
+OAUTH_JIRA_CLOUD_CLIENT_ID = os.environ.get("OAUTH_JIRA_CLOUD_CLIENT_ID", "")
+OAUTH_JIRA_CLOUD_CLIENT_SECRET = os.environ.get("OAUTH_JIRA_CLOUD_CLIENT_SECRET", "")
+OAUTH_GOOGLE_DRIVE_CLIENT_ID = os.environ.get("OAUTH_GOOGLE_DRIVE_CLIENT_ID", "")
+OAUTH_GOOGLE_DRIVE_CLIENT_SECRET = os.environ.get(
+    "OAUTH_GOOGLE_DRIVE_CLIENT_SECRET", ""
 )
 
 # JWT configuration
