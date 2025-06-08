@@ -24,8 +24,10 @@ from onyx.connectors.models import ImageSection
 from onyx.connectors.models import SlimDocument
 from onyx.connectors.models import TextSection
 from onyx.db.engine import get_session_with_current_tenant
+from onyx.file_processing.extract_file_text import ALL_ACCEPTED_FILE_EXTENSIONS
 from onyx.file_processing.extract_file_text import docx_to_text_and_images
 from onyx.file_processing.extract_file_text import extract_file_text
+from onyx.file_processing.extract_file_text import get_file_ext
 from onyx.file_processing.extract_file_text import pptx_to_text
 from onyx.file_processing.extract_file_text import read_pdf_file
 from onyx.file_processing.extract_file_text import xlsx_to_text
@@ -58,6 +60,10 @@ GOOGLE_MIME_TYPES = {
     GDriveMimeType.SPREADSHEET.value: "text/csv",
     GDriveMimeType.PPT.value: "text/plain",
 }
+
+
+def onyx_document_id_from_drive_file(file: GoogleDriveFileType) -> str:
+    return file[WEB_VIEW_LINK_KEY]
 
 
 def _summarize_drive_image(
@@ -162,15 +168,15 @@ def _download_and_extract_sections_basic(
     elif (
         mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     ):
-        text = xlsx_to_text(io.BytesIO(response_call()))
-        return [TextSection(link=link, text=text)]
+        text = xlsx_to_text(io.BytesIO(response_call()), file_name=file_name)
+        return [TextSection(link=link, text=text)] if text else []
 
     elif (
         mime_type
         == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     ):
-        text = pptx_to_text(io.BytesIO(response_call()))
-        return [TextSection(link=link, text=text)]
+        text = pptx_to_text(io.BytesIO(response_call()), file_name=file_name)
+        return [TextSection(link=link, text=text)] if text else []
 
     elif is_gdrive_image_mime_type(mime_type):
         # For images, store them for later processing
@@ -220,6 +226,12 @@ def _download_and_extract_sections_basic(
             "application/vnd.google-apps.audio",
             "application/zip",
         ]:
+            return []
+
+        # don't download the file at all if it's an unhandled extension
+        file_ext = get_file_ext(file.get("name", ""))
+        if file_ext not in ALL_ACCEPTED_FILE_EXTENSIONS:
+            logger.warning(f"Skipping file {file.get('name')} due to extension.")
             return []
         # For unsupported file types, try to extract text
         try:
@@ -327,12 +339,16 @@ def convert_drive_item_to_document(
         doc_or_failure = _convert_drive_item_to_document(
             creds, allow_images, size_threshold, retriever_email, file
         )
+
+        # There are a variety of permissions-based errors that occasionally occur
+        # when retrieving files. Often when these occur, there is another user
+        # that can successfully retrieve the file, so we try the next user.
         if (
             doc_or_failure is None
             or isinstance(doc_or_failure, Document)
             or not (
                 isinstance(doc_or_failure.exception, HttpError)
-                and doc_or_failure.exception.status_code == 403
+                and doc_or_failure.exception.status_code in [401, 403, 404]
             )
         ):
             return doc_or_failure
@@ -368,7 +384,6 @@ def _convert_drive_item_to_document(
     """
     Main entry point for converting a Google Drive file => Document object.
     """
-    doc_id = file.get(WEB_VIEW_LINK_KEY, "")
     sections: list[TextSection | ImageSection] = []
     # Only construct these services when needed
     drive_service = lazy_eval(
@@ -377,6 +392,7 @@ def _convert_drive_item_to_document(
     docs_service = lazy_eval(
         lambda: get_google_docs_service(creds, user_email=retriever_email)
     )
+    doc_id = "unknown"
 
     try:
         # skip shortcuts or folders
@@ -429,7 +445,7 @@ def _convert_drive_item_to_document(
             logger.warning(f"No content extracted from {file.get('name')}. Skipping.")
             return None
 
-        doc_id = file[WEB_VIEW_LINK_KEY]
+        doc_id = onyx_document_id_from_drive_file(file)
 
         # Create the document
         return Document(
@@ -476,7 +492,7 @@ def build_slim_document(file: GoogleDriveFileType) -> SlimDocument | None:
     if file.get("mimeType") in [DRIVE_FOLDER_TYPE, DRIVE_SHORTCUT_TYPE]:
         return None
     return SlimDocument(
-        id=file[WEB_VIEW_LINK_KEY],
+        id=onyx_document_id_from_drive_file(file),
         perm_sync_data={
             "doc_id": file.get("id"),
             "drive_id": file.get("driveId"),
